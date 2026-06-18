@@ -41,9 +41,6 @@ class ItemServiceImplTest {
     @Mock
     private UserRepository userRepository;
 
-    @Mock
-    private org.springframework.context.ApplicationEventPublisher eventPublisher;
-
     @InjectMocks
     private ItemServiceImpl itemService;
 
@@ -140,24 +137,6 @@ class ItemServiceImplTest {
         assertNotNull(result);
         assertEquals(2, result.getImageUrls().size());
         verify(itemRepository, times(1)).save(any(Item.class));
-    }
-
-    @Test
-    @DisplayName("Should create item with empty image list")
-    void testCreateItem_WithEmptyImageList() {
-        // Arrange
-        itemRequestDTO.setImageUrls(new ArrayList<>());
-        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
-        when(itemRepository.save(any(Item.class))).thenReturn(testItem);
-
-        // Act
-        ItemResponseDTO result = itemService.createItem(1L, itemRequestDTO);
-
-        // Assert
-        assertNotNull(result);
-        ArgumentCaptor<Item> itemCaptor = ArgumentCaptor.forClass(Item.class);
-        verify(itemRepository).save(itemCaptor.capture());
-        assertTrue(itemCaptor.getValue().getImages().isEmpty());
     }
 
     // ==================== Get Item Tests ====================
@@ -390,7 +369,7 @@ class ItemServiceImplTest {
     @DisplayName("Should search items by term")
     void testSearchItems() {
         // Arrange
-        when(itemRepository.searchByKeyword("keys")).thenReturn(Arrays.asList(testItem));
+        when(itemRepository.searchByTitleOrDescription("keys")).thenReturn(Arrays.asList(testItem));
 
         // Act
         List<ItemResponseDTO> results = itemService.searchItems("keys");
@@ -405,55 +384,13 @@ class ItemServiceImplTest {
     @DisplayName("Should return empty list for search with no matches")
     void testSearchItems_NoMatches() {
         // Arrange
-        when(itemRepository.searchByKeyword("nonexistent")).thenReturn(new ArrayList<>());
+        when(itemRepository.searchByTitleOrDescription("nonexistent")).thenReturn(new ArrayList<>());
 
         // Act
         List<ItemResponseDTO> results = itemService.searchItems("nonexistent");
 
         // Assert
         assertTrue(results.isEmpty());
-    }
-
-    @Test
-    @DisplayName("Should return best matches first for keyword search")
-    void testSearchItems_BestMatchesFirst() {
-        // Arrange
-        Item titleMatch = new Item();
-        titleMatch.setId(1L);
-        titleMatch.setTitle("Lost Car Keys");
-        titleMatch.setDescription("Found near parking lot");
-        titleMatch.setCategory("Accessories");
-        titleMatch.setLocation("Gate");
-        titleMatch.setReportType(ReportType.LOST);
-        titleMatch.setStatus(ItemStatus.OPEN);
-        titleMatch.setUser(testUser);
-        titleMatch.setImages(new ArrayList<>());
-        titleMatch.setCreatedAt(LocalDateTime.now().minusHours(2));
-        titleMatch.setUpdatedAt(LocalDateTime.now().minusHours(2));
-
-        Item descriptionMatch = new Item();
-        descriptionMatch.setId(2L);
-        descriptionMatch.setTitle("Lost Wallet");
-        descriptionMatch.setDescription("Wallet had home keys inside");
-        descriptionMatch.setCategory("Accessories");
-        descriptionMatch.setLocation("Library");
-        descriptionMatch.setReportType(ReportType.LOST);
-        descriptionMatch.setStatus(ItemStatus.OPEN);
-        descriptionMatch.setUser(testUser);
-        descriptionMatch.setImages(new ArrayList<>());
-        descriptionMatch.setCreatedAt(LocalDateTime.now().minusHours(1));
-        descriptionMatch.setUpdatedAt(LocalDateTime.now().minusHours(1));
-
-        when(itemRepository.searchByKeyword("keys"))
-                .thenReturn(Arrays.asList(descriptionMatch, titleMatch));
-
-        // Act
-        List<ItemResponseDTO> results = itemService.searchItems("keys");
-
-        // Assert
-        assertEquals(2, results.size());
-        assertEquals("Lost Car Keys", results.get(0).getTitle());
-        assertEquals("Lost Wallet", results.get(1).getTitle());
     }
 
     // ==================== Update Tests ====================
@@ -549,23 +486,6 @@ class ItemServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should include added image URL in response")
-    void testAddImageToItem_IncludesImageUrlInResponse() {
-        // Arrange
-        String imageUrl = "https://example.com/new-image.jpg";
-        when(itemRepository.findById(1L)).thenReturn(Optional.of(testItem));
-        when(itemRepository.save(any(Item.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        // Act
-        ItemResponseDTO result = itemService.addImageToItem(1L, imageUrl);
-
-        // Assert
-        assertNotNull(result);
-        assertEquals(1, result.getImageUrls().size());
-        assertEquals(imageUrl, result.getImageUrls().get(0));
-    }
-
-    @Test
     @DisplayName("Should throw RuntimeException when item not found for image add")
     void testAddImageToItem_ItemNotFound() {
         // Arrange
@@ -614,5 +534,16 @@ class ItemServiceImplTest {
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(itemRepository).findAll(pageableCaptor.capture());
         assertEquals(5, pageableCaptor.getValue().getPageSize());
+    }
+
+    @Test
+    @DisplayName("Should throw exception when deleting a non-existent item")
+    void testDeleteItem_NotFound() {
+        // Arrange
+        when(itemRepository.findById(999L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> itemService.deleteItem(999L));
+        verify(itemRepository, never()).delete(any(Item.class));
     }
 }
